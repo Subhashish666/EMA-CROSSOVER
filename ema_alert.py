@@ -1,32 +1,38 @@
-import requests
 import yfinance as yf
 import pandas as pd
+import requests
+import os
+import time
 
-# 🔹 Your Telegram details
-TELEGRAM_TOKEN = "8240031497:AAFTd0XwNR5obQLDGug2Zb2tW0z3p1lCeqc"
-CHAT_ID = "1946138824"
+# Load token and chat_id from GitHub Secrets / Environment
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+def send_telegram_message(message: str):
+    """Send message to Telegram bot"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
     try:
-        requests.post(url, data=payload)
+        requests.post(url, json=payload)
     except Exception as e:
-        print("Telegram error:", e)
+        print("Error sending Telegram message:", e)
 
-def main():
-    # ✅ Always send a debug message when bot runs
-    send_telegram_message("✅ Bot ran successfully, EMA check complete.")
+def check_ema_touch():
+    """Check if EMA9 and EMA21 touch in 15m timeframe"""
+    data = yf.download("BTC-USD", interval="15m", period="2d")
+    data["EMA9"] = data["Close"].ewm(span=9, adjust=False).mean()
+    data["EMA21"] = data["Close"].ewm(span=21, adjust=False).mean()
 
-    # Example: still fetch data so script runs correctly
-    symbol = "AAPL"
-    interval = "15m"
-    period = "5d"
+    last_ema9 = data["EMA9"].iloc[-1]
+    last_ema21 = data["EMA21"].iloc[-1]
 
-    df = yf.download(tickers=symbol, interval=interval, period=period)
-    if not df.empty:
-        df["EMA_9"] = df["Close"].ewm(span=9, adjust=False).mean()
-        df["EMA_21"] = df["Close"].ewm(span=21, adjust=False).mean()
+    # Consider it a "touch" if the values are very close
+    if abs(last_ema9 - last_ema21) <= 5:  # tolerance
+        send_telegram_message("⚡ EMA Touch detected on BTC (15m)")
+
+        # wait 5 min and send reminder
+        time.sleep(300)
+        send_telegram_message("⏰ Reminder: EMA Touch happened 5 min ago (BTC, 15m)")
 
 if __name__ == "__main__":
-    main()
+    check_ema_touch()
